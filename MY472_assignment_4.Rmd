@@ -1,0 +1,66 @@
+---
+title: "Assignment Template"
+class: "MY 472"
+date: "AT 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = FALSE)
+```
+## Edited Assignment Instructions for Part I: Data Science Project (70 Marks)
+
+In Part 1 of your final assignment you will complete an independent data science project summarised in a written report. Your final written report should be no longer than 750 words (excluding code), and should consist of four sections (see below).
+
+Offer an answer to the research question using data from at least the required data sources, however you are encouraged to think more broadly and use data from other sources if you would like. Note that you do not have to use all the data from the required data sources – the requirement is only that you must use some data from these sources. It may also be wise to limit the amount of data you use (e.g. by randomly sampling, or by limiting the geographic or temporal coverage of your project) to make things manageable.
+
+* Completing the core data science task: answering the research question with data from the required data sources.
+* The creativity and depth with which you answer the question (e.g. using additional data beyond the required data, creative analyses, careful discussion of issues and difficulties in interpretation, etc.).
+* The quality of presentation in your final document (e.g. well-presented tables, compelling visualisations, strong interpretations and explanations, etc.).
+* The quality of data science practice exhibited (e.g. replicability, well-written and efficient code, effective annotation, principled web-scraping, etc.).
+
+## Introduction
+*A brief introduction to the research question and your approach to answering it. You do not need to cite any literature or write a literature review.*
+
+Research question:
+“Rolling Stone Magazine ranked their 100 greatest musical artists of all time. At the end of 2023, how has their music endured? Are there any features or characteristics that seem to explain enduring engagement?
+
+## Data
+*A discussion of the data sources you used, how you accessed them, how you processed the data, the structure of your final analysis dataset(s), and so on.*
+
+Required data sources:
+Rolling Stone’s 100 Greatest Artists, 2010
+Spotify Web API
+
+```{r}
+# Load data from Rolling Stone's 100 Greatest Artists, 2010
+
+# Process and clean RS data
+
+```
+
+```{r}
+# Load data from Spotify API
+
+# Process and clean Spotify data
+
+```
+
+## Analysis
+*A presentation of your analysis, including figures/graphs/maps, and a discussion of your findings. In general, we do not expect you to conduct or interpret any formal statistical tests, though you may do this if you wish. Remember that your discussion should translate your specific analysis and results back to the level of the research question.*
+
+```{r}
+# Statistical Analysis
+
+```
+
+```{r}
+# Data Visualization
+
+```
+
+## Appendix
+*As in the previous assignments, all code that you do not wish to directly include in your report should be included in a code appendix at the end of the document.*
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE} 
+```
