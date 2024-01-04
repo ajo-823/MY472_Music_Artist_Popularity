@@ -33,16 +33,105 @@ Rolling Stone’s 100 Greatest Artists, 2010
 Spotify Web API
 
 ```{r}
+
+# IMPORTS ----------------------------------------------------------------------
+library(tidyverse)
+library(RSelenium)
+library(netstat)
+library(spotifyr)
+
+# FUNCTIONS --------------------------------------------------------------------
+
+# FUNCTION to get list of elements given a selector
+# Assumes driver is already set up and navigated to URL
+get_RStop100_element <- function(selector) {
+  elements <- driver$findElements(using = "xpath", value = selector)
+  selected_items <- sapply(elements, function(element) element$getElementText())
+  return(unlist(selected_items))
+}
+```
+
+```{r}
 # Load data from Rolling Stone's 100 Greatest Artists, 2010
 
-# Process and clean RS data
+# XPATH selectors
+ranking_selector <- '//*[@class="c-gallery-vertical-album__number"]'
+artist_selector <- '//*[@class="c-gallery-vertical-album__title"]'
+essay_selector <- '//*[@class="c-gallery-vertical-album__description"]'
+
+# Setup driver and Navigate to URL (first half of top 100 list)
+rD <- rsDriver(browser = c("firefox"), port = free_port(random = TRUE), chromever = NULL) 
+driver <- rD$client
+url <- 'https://www.rollingstone.com/music/music-lists/100-greatest-artists-147446/'
+driver$navigate(url)
+
+# Get information for first 50 artists (#100-51)
+ranking_first <- get_RStop100_element(ranking_selector)
+artists_first <- get_RStop100_element(artist_selector)
+essays_first <- get_RStop100_element(essay_selector)
+
+# Load page with second half of top 100 list
+to_scroll <- driver$findElement(using = "xpath", value = '/html/body/div[5]/main/div[2]/div[1]/div/article/div[3]/div[2]/div[2]/a')
+driver$executeScript("arguments[0].scrollIntoView(true);", list(to_scroll))
+below_50 <- driver$findElement(using = 'xpath', value = '/html/body/div[5]/header/div[2]/div/div/div/div/aside/div/div[2]/a[6]')
+below_50$clickElement()
+ 
+# Get information for second 50 artists (#50-1)
+ranking_second <- get_RStop100_element(ranking_selector)
+artists_second <- get_RStop100_element(artist_selector)
+essays_second <- get_RStop100_element(essay_selector)
+
+# Combine info for first and second 50 (for total of 100)
+ranking <- c(ranking_first, ranking_second)
+artists <- c(artists_first, artists_second)
+essays <- c(essays_first, essays_second)
+
+# Create table with variables for Ranking, Artist name, and Essay (description of legacy)
+top100_table <- data.frame(Rank = ranking, Artist = artists, Essay = essays)
 
 ```
 
 ```{r}
-# Load data from Spotify API
+# Access Spotify API
+readRenviron("../spotify_api.env")
+Sys.setenv(SPOTIFY_CLIENT_ID = Sys.getenv("CLIENT_ID"),
+           SPOTIFY_CLIENT_SECRET = Sys.getenv("CLIENT_SECRET"))
 
-# Process and clean Spotify data
+# Function to get artists info given their name
+get_artist_info <- function(name) {
+  
+  # Search for artist to get Spotify ID
+  artist_search_results <- search_spotify(name,'artist')
+  artist_id <- artist_search_results$id[[1]]
+  
+  # Get artist info and return
+  artist_info <- get_artist(artist_id)
+  return(artist_info)
+}
+
+# Function to return artist name, popularity, genres, number of genres
+get_popularity_vars <- function(artist_info) {
+  
+  # Get values for each popularity variable
+  spotify_id <- artist_info$id
+  name <- artist_info$name
+  popularity <- artist_info$popularity
+  genres <- paste(artist_info$genres, collapse = ", ")
+  num_genres <- length(artist_info$genres)
+  
+  # Format and return results
+  popularity_vars <- list(spotify_id,name,popularity,genres,num_genres)
+  return(popularity_vars)
+}
+
+top_artists <- data.frame()
+for (artist in top100_table$Artist) {
+  pop_vars <- get_popularity_vars(get_artist_info(artist))
+  top_artists <- rbind(top_artists,pop_vars)
+}
+colnames(top_artists) <- c("ID","Artist","Popularity","Genres","Num_Genres")
+
+top_artists
 
 ```
 
