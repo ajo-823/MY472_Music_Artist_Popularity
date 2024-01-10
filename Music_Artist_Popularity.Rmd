@@ -9,6 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
+[Link to GitHub Repository](https://github.com/ajo-823/MY472_Assignment4.git)
+
 ### Introduction
 
 Rolling Stone ranked 100 greatest musical artists of all time in 2010. The article claims them the "most influential artists of the rock & roll era", but has their music endured? The analysis below describes characteristics that may explain popularity at the end of 2023.
@@ -17,11 +19,11 @@ Rolling Stone ranked 100 greatest musical artists of all time in 2010. The artic
 
 I used three data sources in my analysis. 
 
-1. The Rolling Stone's 100 Greatest Artists (RS100) article, which I accessed by scraping the website to get artist name, rank, and description. No data manipulation was needed after collection. All 3 variables were stored in a single table.
+1. [The Rolling Stone's 100 Greatest Artists](https://www.rollingstone.com/music/music-lists/100-greatest-artists-147446/) (RS100) article, which I accessed by scraping the website to get artist name, rank, and description. No data manipulation was needed after collection. All 3 variables were stored in a single table.
 
-2. The Spotify API, which I accessed using the "spotifyr" package. I gathered two categories of data: information about the RS100 artists and top tracks. I did not manipulate data further than turning numbers into numeric data types and changing song duration from milliseconds to minutes. All data for the 83 artists (out of 100) that had spotify information available were stored in a single table with 10 columns.
+2. [The Spotify API](https://developer.spotify.com/documentation/web-api), which I accessed using the "spotifyr" package. I gathered two categories of data: information about the RS100 artists and top tracks. I did not manipulate data further than turning numbers into numeric data types and changing song duration from milliseconds to minutes. All data for the 83 artists (out of 100) that had spotify information available were stored in a single table with 10 columns.
 
-3. The wikipedia article "List of best-selling music artists'' which contains tables of information about the best-selling music artists. I used a webscraper to access the data and functions to clean the data (primary parse numbers for monetary values). This data contained 31 out of the 100 artists from the Rolling Stone article and was stored as a table with 8 columns.
+3. The wikipedia article ["List of best-selling music artists"](https://en.wikipedia.org/wiki/List_of_best-selling_music_artists) which contains tables of information about the best-selling music artists. I used a webscraper to access the data and functions to clean the data (primarily parse numbers for monetary values). This data contained 31 out of the 100 artists from the Rolling Stone article and was stored as a table with 8 columns.
 
 I saved all three tables to a database and used SQLite queries for my analysis.
 
@@ -351,8 +353,8 @@ popularity_table <- dbGetQuery(db,
   JOIN rollingstone_top100 ON spotify_info.Artist = rollingstone_top100.Artist;")
 
 top_10_most_popular <- dbGetQuery(db,
-  "SELECT rs.Rank AS RS_Rank, si.Artist, si.Popularity, si.TopTrack_Popularity, si.TopTrack_ReleaseDate, 
-  ts.Country, ts.Certified_Units
+  "SELECT rs.Rank AS RS_Rank, si.Artist, si.Popularity AS Artist_Pop, si.TopTrack_Popularity AS TopTrack_Pop,   
+  si.TopTrack_ReleaseDate AS TopTrack_Release, ts.Country, ts.Certified_Units AS Certified_Sales
   FROM spotify_info AS si
   JOIN top_sellers AS ts ON ts.Artist = si.Artist
   JOIN rollingstone_top100 AS rs ON rs.Artist = si.Artist
@@ -369,7 +371,7 @@ The table shows the most relatively frequent genres in the spotify API data and 
 
 ```{r}
 
-# ANALYSIS----------------------------------------------------------------------
+# FIGURES & ANALYSIS -----------------------------------------------------------
 
 # TOP GENRES--------------------------------------------------------------------
 spotify_genre_list <- get_top_genres(spotify_info$Genres)
@@ -391,12 +393,12 @@ The histograms below show the distribution of release year of the top track comp
 
 # RELEASE YEAR HISTOGRAM--------------------------------------------------------
 
-# Put data in tidy-long format
+# Put Release Year data in tidy-long format
 years_long <- data.frame(
   Variable = rep(c("Artist's Top Song Release Year", "Year Artist First Charted"), each = nrow(all_artist_data)),
   Value = c(all_artist_data$Release_Year, all_artist_data$Year_First_Charted) )
 
-# Plot side-by-side histograms
+# Plot side-by-side histograms for Release Years
 ggplot(years_long, aes(x = as.numeric(Value), fill = Variable)) +
   geom_histogram(position = "identity", alpha = 1, binwidth = 6, color = "black") +
   scale_fill_manual(values = c("cornsilk", "coral")) +
@@ -407,11 +409,11 @@ ggplot(years_long, aes(x = as.numeric(Value), fill = Variable)) +
 
 ```
 
-This histogram shows the distribution of Spotify artist popularity scores. The scores are between 0 (lowest) and 100 (highest). The chart indicates that the scores are not uniquely high, with the majority being between 53 and 83.
+This histogram shows the distribution of Spotify artist popularity scores. The scores are between 0 (lowest popularity) and 100 (highest popularity). The chart indicates that the scores are not uniquely high, with the majority being between 53 and 83.
 
 ```{r}
 
-# SPOTIFY POPULARITY HISTOGRAM--------------------------------------------------
+# ARTIST POPULARITY HISTOGRAM---------------------------------------------------
 ggplot(spotify_info, aes(x = Popularity)) +
   geom_histogram(binwidth = 5, fill = "skyblue", color = "black", alpha = 0.7) +
   scale_x_continuous(breaks = seq(min(spotify_info$Popularity), max(100), by = 10)) +
@@ -423,7 +425,7 @@ The scatterplot below indicates that Rolling Stone ranking does not correlate wi
 
 ```{r, message=FALSE, warning=FALSE}
 
-# ARTIST RANK ON ROLLING STONE V ARTIST POPULARITY------------------------------
+# ARTIST RANK ON ROLLING STONE VS ARTIST POPULARITY-----------------------------
 ggplot(popularity_table, aes(x = RS_Rank, y = Popularity)) +
   geom_point() + theme_minimal() + 
   theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
@@ -435,11 +437,11 @@ ggplot(popularity_table, aes(x = RS_Rank, y = Popularity)) +
 
 ```
 
-The table below shows the top 10 artists for Spotify popularity. These artists all have popular top songs, rock genres, millions in certified sales (units), and all from the US, UK, or Australia. What explains why these artists are popular compared to others from the RS100?
+The table below shows the top 10 artists for Spotify popularity. These artists all have popular top songs, varied release dates, millions in certified sales (units), and all from the US, UK, or Australia. What explains why these artists are popular compared to others from the RS100?
 
 ```{r}
 
-# Most Popular Artists Table
+# MOST POPULAR ARTISTS----------------------------------------------------------
 print(top_10_most_popular)
 
 ```
@@ -448,7 +450,7 @@ The scatterplot below shows Artist Popularity is correlated with Top-Song popula
 
 ```{r, message=FALSE, warning=FALSE}
 
-# TOP TRACK POPULARITY V ARTIST POPULARITY (Spotify)----------------------------
+# TOP TRACK POPULARITY VS ARTIST POPULARITY ------------------------------------
 ggplot(spotify_info, aes(x = TopTrack_Popularity, y = Popularity)) +
   geom_point() + theme_minimal() + 
   theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
@@ -460,11 +462,11 @@ ggplot(spotify_info, aes(x = TopTrack_Popularity, y = Popularity)) +
 
 ```
 
-It appears there is a slight correlation between the song's release year and the artist's popularity. This indicates that older artists may have lower popularity scores because their songs were released earlier.
+It appears there is a slight correlation between the song's release year and the artist's popularity. This indicates that older artists (many of the RS100) may have lower popularity scores because their songs were released earlier.
 
 ```{r, message=FALSE, warning=FALSE}
 
-# DURATION OF TOP SONG V SONG POPULARITY----------------------------------------
+# DURATION OF TOP TRACK VS TOP TRACK POPULARITY---------------------------------
 ggplot(spotify_info, aes(x = as.numeric(Release_Year), y = Popularity)) +
   geom_point() + theme_minimal() + 
   theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
@@ -480,7 +482,7 @@ The graph below indicates there is a relationship between artist popularity and 
 
 ```{r, message=FALSE, warning=FALSE}
 
-# POPULARITY VS TOP SELLERS-----------------------------------------------------
+# ARTIST POPULARITY VS TOP SELLERS----------------------------------------------
 ggplot(all_artist_data, aes(x = as.numeric(Certified_Units), y = Popularity)) +
   geom_point() + theme_minimal() + 
   theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
