@@ -1,58 +1,196 @@
 ---
-title: "Assignment Template"
+title: "Music Artist Popularity"
 class: "MY 472"
-date: "AT 2023"
+date: "10 January 2024"
 output: html_document
 ---
 
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(echo = FALSE)
 ```
-## Edited Assignment Instructions for Part I: Data Science Project (70 Marks)
-
-In Part 1 of your final assignment you will complete an independent data science project summarised in a written report. Your final written report should be no longer than 750 words (excluding code), and should consist of four sections (see below).
-
-Offer an answer to the research question using data from at least the required data sources, however you are encouraged to think more broadly and use data from other sources if you would like. Note that you do not have to use all the data from the required data sources – the requirement is only that you must use some data from these sources. It may also be wise to limit the amount of data you use (e.g. by randomly sampling, or by limiting the geographic or temporal coverage of your project) to make things manageable.
-
-* Completing the core data science task: answering the research question with data from the required data sources.
-* The creativity and depth with which you answer the question (e.g. using additional data beyond the required data, creative analyses, careful discussion of issues and difficulties in interpretation, etc.).
-* The quality of presentation in your final document (e.g. well-presented tables, compelling visualisations, strong interpretations and explanations, etc.).
-* The quality of data science practice exhibited (e.g. replicability, well-written and efficient code, effective annotation, principled web-scraping, etc.).
 
 ## Introduction
-*A brief introduction to the research question and your approach to answering it. You do not need to cite any literature or write a literature review.*
 
-Research question:
-“Rolling Stone Magazine ranked their 100 greatest musical artists of all time. At the end of 2023, how has their music endured? Are there any features or characteristics that seem to explain enduring engagement?
+Rolling Stone ranked 100 greatest musical artists of all time in 2010. The article claims them the "most influential artists of the rock & roll era", but how has their music endured? The analysis below describes characteristics that may explain popularity at the end of 2023.
 
 ## Data
-*A discussion of the data sources you used, how you accessed them, how you processed the data, the structure of your final analysis dataset(s), and so on.*
 
-Required data sources:
-Rolling Stone’s 100 Greatest Artists, 2010
-Spotify Web API
+I used three data sources to answer this research question. 
+
+1. The Rolling Stone's 100 Greatest Artists (RS100) article, which I accessed by scraping the website to get each artist's name, rank, and description. No data manipulation was needed after collection. All 3 variables were stored in a single table.
+
+2. The Spotify API, which I accessed using the "spotifyr" package. I gathered two categories of data from the API: information about the RS100 artists and top tracks. I did not need to manipulate the data further than turning numbers into numeric data types, and changing song duration from milliseconds to minutes. All data for the 83 artists (out of 100) that had spotify data available were stored in a single table with 10 columns.
+
+3. The wikipedia article "List of best-selling music artists'' which contains tables of information about the best-selling music artists. I used a webscraper to access the data and functions to clean the data (primary parse numbers for monetary values). This data contained 31 out of the 100 artists from the Rolling Stone article, and was stored as a table with 8 columns.
+
+I saved all three of the tables on an SQLite database. I used queries of this database for my analysis.
 
 ```{r}
 
 # IMPORTS ----------------------------------------------------------------------
 library(tidyverse)
+library(DBI)
 library(RSelenium)
 library(netstat)
 library(spotifyr)
+library(dplyr)
+library(rvest)
+library(ggplot2)
+
+# DATABASE ---------------------------------------------------------------------
+
+# Create SQLite database
+database_name <- "database/top_artists-db.sqlite"
+db <- dbConnect(RSQLite::SQLite(), database_name)
 
 # FUNCTIONS --------------------------------------------------------------------
 
-# FUNCTION to get list of elements given a selector
-# Assumes driver is already set up and navigated to URL
+# ROLLING STONE DATA PROCESSING FUNCTIONS---------------------------------------
+
+# Get list of elements given a selector (given driver has navigated to URL)
 get_RStop100_element <- function(selector) {
+  
+  # Get elements from selector, transform to text, return as vector
   elements <- driver$findElements(using = "xpath", value = selector)
   selected_items <- sapply(elements, function(element) element$getElementText())
   return(unlist(selected_items))
 }
+
+# SPOTIFY API DATA PROCESSING FUNCTIONS-----------------------------------------
+
+# Get artists info given their name (using Spotify API)
+get_artist_info <- function(name) {
+  
+  # Search for artist to get Spotify ID
+  artist_search_results <- search_spotify(name,'artist')
+  artist_id <- artist_search_results$id[[1]]
+  
+  # Get artist info and return
+  artist_info <- get_artist(artist_id)
+  return(artist_info)
+}
+
+# Return artist name, popularity, genres, number of genres (artist_info table)
+get_popularity_vars <- function(artist_info) {
+  
+  # Get values for each popularity variable and return
+  spotify_id <- artist_info$id
+  name <- artist_info$name
+  popularity <- artist_info$popularity
+  genres <- paste(artist_info$genres, collapse = ", ")
+  num_genres <- length(artist_info$genres)
+  
+  return(c(spotify_id,name,popularity,genres,num_genres))
+}
+
+# Get artists top track info given their name (using Spotify API)
+get_toptrack_info <- function(name) {
+  
+  # Search for artist to get Spotify ID
+  artist_search_results <- search_spotify(name,'artist')
+  artist_id <- artist_search_results$id[[1]]
+  
+  # Get top track info and return
+  top_tracks <- get_artist_top_tracks(artist_id)
+  top_song_name <- top_tracks$name[[1]]
+  top_song_pop <- top_tracks$popularity[[1]]
+  top_song_len <- top_tracks$duration_ms[[1]]
+  top_song_releasedate <- top_tracks$album.release_date[[1]]
+
+  return(c(name,top_song_name,top_song_pop,top_song_len,top_song_releasedate))
+}
+
+# WIKIPEDIA TOP SELLERS DATA PROCESSING FUNCTIONS-------------------------------
+
+# Remove bracket numbers from character string (clean Wiki tables)
+remove_bracket_num <- function(input_string) {
+  
+  # Return string without bracket numbers
+  updated_string <- gsub("\\[\\d+\\]", "", input_string)
+  return(updated_string)
+}
+
+# Function to parse claimed sales to single number (clean Wiki tables)
+parse_claimed_sales <- function(chars) {
+  
+  # Parse string into list of numbers and convert to millions
+  parse_num_pattern <- "\\b\\d{1,3}(,\\d{3})*(\\.\\d+)?\\b"
+  all_numbers <- str_extract_all(chars, parse_num_pattern)
+  all_numbers <- as.numeric(gsub(",", "", unlist(all_numbers)))
+  all_numbers <- unlist(lapply(all_numbers,function(i){i*1000000}))
+  
+  # Return mean
+  return(mean(all_numbers))
+}
+
+# Function to parse certified sales to single number (clean Wiki tables)
+parse_cert_sales <- function(chars) {
+  
+  # Parse string into list of numbers
+  parse_num_pattern <- "\\b\\d{1,3}(,\\d{3})*(\\.\\d+)?\\b"
+  all_numbers <- unlist(str_extract_all(chars, parse_num_pattern))
+  
+  # Handle case where parse output .hidden message appears
+  if (grepl(".hidden", chars)) {
+    num_cert_sales <- as.numeric(all_numbers[[4]])*1000000
+    return(num_cert_sales) }
+  
+  # Return first number and convert to millions
+  first_number <- as.numeric(all_numbers[[1]])*1000000
+  return(first_number)
+}
+
+# Clean list of genres (clean Wiki tables)
+clean_genres <- function(input_string) {
+  
+  # Return cleaned list of genres
+  updated_string <- gsub(" /",",",input_string)
+  return(updated_string)
+}
+
+# Function to clean Wikipedia table (clean Wiki tables)
+clean_wiki_table <- function(table) {
+  
+  # Update header
+  colnames(table) <- c("Artist","Country","Period_Active","Year_First_Charted",
+                       "Genre","Certified_Units","Claimed_Sales")
+  
+  # Clean columns using wiki_table cleaning functions above
+  table <- table %>%
+    mutate_all(remove_bracket_num) %>%
+    mutate(Claimed_Sales = sapply(lapply(Claimed_Sales, parse_claimed_sales), `[`, 1)) %>%
+    mutate(Certified_Units = sapply(lapply(Certified_Units, parse_cert_sales), `[`, 1)) %>%
+    mutate(Genre = sapply(lapply(Genre,clean_genres), `[`, 1))
+  
+  table$Claimed_Sales <- format(table$Claimed_Sales, scientific = FALSE)
+  table$Certified_Units <- format(table$Certified_Units, scientific = FALSE)
+  
+  # Return table
+  return(table)
+}
+
+# GENRE DATA PROCESSING FUNCTIONS-----------------------------------------------
+
+get_top_genres <- function(genre_column) {
+  
+  # Split column by comma and create list of all genres
+  split_genre_list <- lapply(strsplit(genre_column, ", "), trimws)
+  lowercase_genre_list <- unlist(lapply(split_genre_list, tolower), recursive = FALSE)
+  
+  # Calculate relative frequencies
+  genre_table <- table(lowercase_genre_list)
+  relative_frequencies <- round(prop.table(genre_table) * length(genre_column), digits = 2)
+  
+  # Return sorted list of relative frequencies
+  sorted_relative_frequencies <- sort(relative_frequencies, decreasing = TRUE)
+  return(sorted_relative_frequencies)
+}
+
 ```
 
-```{r}
-# Load data from Rolling Stone's 100 Greatest Artists, 2010
+```{r, eval=FALSE}
+
+# DATA PROCESSING: THE ROLLING STONE TOP 100 ARTISTS (2010) --------------------
 
 # XPATH selectors
 ranking_selector <- '//*[@class="c-gallery-vertical-album__number"]'
@@ -87,69 +225,270 @@ artists <- c(artists_first, artists_second)
 essays <- c(essays_first, essays_second)
 
 # Create table with variables for Ranking, Artist name, and Essay (description of legacy)
-top100_table <- data.frame(Rank = ranking, Artist = artists, Essay = essays)
+rollingstone_top100 <- data.frame(Rank = as.numeric(ranking), Artist = artists, Essay = essays)
+
+# Save table to database
+db <- dbConnect(RSQLite::SQLite(),database_name)
+dbWriteTable(db, "rollingstone_top100", rollingstone_top100, overwrite = TRUE, primary.key = "Artist")
+dbDisconnect(db)
 
 ```
 
-```{r}
+```{r, eval=FALSE}
+
+# DATA PROCESSING: SPOTIFY API -------------------------------------------------
+
 # Access Spotify API
 readRenviron("../spotify_api.env")
 Sys.setenv(SPOTIFY_CLIENT_ID = Sys.getenv("CLIENT_ID"),
            SPOTIFY_CLIENT_SECRET = Sys.getenv("CLIENT_SECRET"))
 
-# Function to get artists info given their name
-get_artist_info <- function(name) {
-  
-  # Search for artist to get Spotify ID
-  artist_search_results <- search_spotify(name,'artist')
-  artist_id <- artist_search_results$id[[1]]
-  
-  # Get artist info and return
-  artist_info <- get_artist(artist_id)
-  return(artist_info)
-}
-
-# Function to return artist name, popularity, genres, number of genres
-get_popularity_vars <- function(artist_info) {
-  
-  # Get values for each popularity variable
-  spotify_id <- artist_info$id
-  name <- artist_info$name
-  popularity <- artist_info$popularity
-  genres <- paste(artist_info$genres, collapse = ", ")
-  num_genres <- length(artist_info$genres)
-  
-  # Format and return results
-  popularity_vars <- list(spotify_id,name,popularity,genres,num_genres)
-  return(popularity_vars)
-}
-
-top_artists <- data.frame()
+# Loop over Rolling Stone Artists to get Spotify Info
+artist_info <- data.frame()
+toptrack_info <- data.frame()
 for (artist in top100_table$Artist) {
+  
+  # Get artist popularity variables and save to dataframe
   pop_vars <- get_popularity_vars(get_artist_info(artist))
-  top_artists <- rbind(top_artists,pop_vars)
+  artist_info <- rbind(artist_info, pop_vars)
+  
+  # Get artist top track info and save to dataframe
+  top_track <- get_toptrack_info(artist)
+  toptrack_info <- rbind(toptrack_info, top_track)
 }
-colnames(top_artists) <- c("ID","Artist","Popularity","Genres","Num_Genres")
 
-top_artists
+# Update column names and merge dataframes for artist and top track
+colnames(artist_info) <- c("ID","Artist","Popularity","Genres","Num_Genres")
+colnames(toptrack_info) <- c("Artist","TopTrack_Name","TopTrack_Popularity","TopTrack_Duration","TopTrack_ReleaseDate")
+spotify_info <- merge(artist_info,toptrack_info,by = "Artist")
+
+# Update columns to be numeric
+spotify_info$Popularity <- as.numeric(spotify_info$Popularity)
+spotify_info$Num_Genres <- as.numeric(spotify_info$Num_Genres)
+spotify_info$TopTrack_Popularity <- as.numeric(spotify_info$TopTrack_Popularity)
+spotify_info$TopTrack_Duration <- as.numeric(spotify_info$TopTrack_Duration)/60000
+
+view(spotify_info)
+
+# Save spotify_info table to database
+db <- dbConnect(RSQLite::SQLite(),database_name)
+dbWriteTable(db, "spotify_info", spotify_info, overwrite = TRUE, primary.key = "Artist")
+dbDisconnect(db)
+
+# Add column for Release Year (based on Release Date)
+db <- dbConnect(RSQLite::SQLite(),database_name)
+dbExecute(db, "ALTER TABLE spotify_info ADD COLUMN Release_Year INTEGER;")
+dbExecute(db, "UPDATE spotify_info
+SET Release_Year =
+  CASE
+    WHEN TopTrack_ReleaseDate LIKE '____-__-__' THEN -- Check for YYYY-MM-DD format
+      CAST(SUBSTR(TopTrack_ReleaseDate, 1, 4) AS INTEGER)
+    WHEN TopTrack_ReleaseDate LIKE '____' THEN -- Check for YYYY format
+      CAST(TopTrack_ReleaseDate AS INTEGER)
+    WHEN TopTrack_ReleaseDate LIKE '____-__' THEN -- Check for YYYY-MM format
+      CAST(SUBSTR(TopTrack_ReleaseDate, 1, 4) AS INTEGER)
+    ELSE
+      NULL -- Handle cases where the date format is not recognized
+  END;")
+
+```
+
+```{r, eval=FALSE}
+
+# DATA PROCESSING: WIKIPEDIA BEST SELLERS --------------------------------------
+
+# Get list of tables on wikipedia page
+wiki_url <- 'https://en.wikipedia.org/wiki/List_of_best-selling_music_artists#250_million_or_more_records'
+html <- read_html(wiki_url)
+tables <- html_table(html, fill = TRUE)
+
+# Apply Wiki table cleaning function
+above_250mill <- clean_wiki_table(tables[[1]])
+above_200mill <- clean_wiki_table(tables[[2]])
+above_120mill <- clean_wiki_table(tables[[3]])
+above_100mill <- clean_wiki_table(tables[[4]])
+above_80mill <- clean_wiki_table(tables[[5]])
+above_75mill <- clean_wiki_table(tables[[6]])
+
+# Combine all tables into one
+top_sellers <- bind_rows(
+  above_250mill %>% mutate(Category = "Above 250 Million"),
+  above_200mill %>% mutate(Category = "Above 200 Million"),
+  above_120mill %>% mutate(Category = "Above 120 Million"),
+  above_100mill %>% mutate(Category = "Above 100 Million"),
+  above_80mill %>% mutate(Category = "Above 80 Million"),
+  above_75mill %>% mutate(Category = "Above 75 Million")
+)
+
+# Save table to database
+db <- dbConnect(RSQLite::SQLite(),database_name)
+dbWriteTable(db, "top_sellers", top_sellers, overwrite = TRUE, primary.key = "Artist")
+dbDisconnect(db)
+
+```
+
+```{r}
+# SQL QUERIES TO RETRIEVE TABLES FROM DATABASE----------------------------------
+
+db <- dbConnect(RSQLite::SQLite(),database_name)
+
+spotify_info <- dbGetQuery(db,
+  "SELECT * FROM spotify_info")
+
+all_artist_data <- dbGetQuery(db,
+  "SELECT rs.Rank as RS_Rank, si.*, 
+  ts.Country, ts.Period_Active, ts.Year_First_Charted, ts.Genre AS Wiki_Genre, 
+  ts.Certified_Units, ts.Claimed_Sales
+    FROM spotify_info AS si
+    JOIN top_sellers AS ts ON ts.Artist = si.Artist
+    JOIN rollingstone_top100 AS rs ON rs.Artist = si.Artist")
+
+popularity_table <- dbGetQuery(db,
+  "SELECT spotify_info.Artist, 
+  rollingstone_top100.Rank AS RS_Rank, 
+  spotify_info.Popularity, spotify_info.TopTrack_Popularity
+  FROM spotify_info
+  JOIN rollingstone_top100 ON spotify_info.Artist = rollingstone_top100.Artist;")
+
+top_10_most_popular <- dbGetQuery(db,
+  "SELECT rs.Rank AS RS_Rank, si.Artist, si.Popularity, si.TopTrack_Popularity, si.TopTrack_ReleaseDate, 
+  ts.Country, ts.Certified_Units
+  FROM spotify_info AS si
+  JOIN top_sellers AS ts ON ts.Artist = si.Artist
+  JOIN rollingstone_top100 AS rs ON rs.Artist = si.Artist
+  ORDER BY Popularity DESC
+  LIMIT 10")
 
 ```
 
 ## Analysis
-*A presentation of your analysis, including figures/graphs/maps, and a discussion of your findings. In general, we do not expect you to conduct or interpret any formal statistical tests, though you may do this if you wish. Remember that your discussion should translate your specific analysis and results back to the level of the research question.*
+
+**Note Spotify data includes 83 out of the RS100. Wikipedia best-sellers include 31 out of the RS100.
+
+The table shows the most relatively frequent genres in the spotify API data and best-sellers wikipedia data. Both lists indicate that the most common genres are rock related.
 
 ```{r}
-# Statistical Analysis
+
+# ANALYSIS----------------------------------------------------------------------
+
+# TOP GENRES--------------------------------------------------------------------
+spotify_genre_list <- get_top_genres(spotify_info$Genres)
+wiki_genre_list <- get_top_genres(all_artist_data$Wiki_Genre)
+
+# Top five genres and frequencies
+top_genres <- data.frame(Spotify_Genre = names(spotify_genre_list[1:5]), 
+                         Spotify_Relative_Freq = as.numeric(spotify_genre_list[1:5]),
+                         Wiki_Genre = names(wiki_genre_list[1:5]), 
+                         Wiki_Relative_Freq = as.numeric(wiki_genre_list[1:5]))
+print(top_genres)
+
+```
+The histograms below show the distribution of release years of each artist's top track compared with the release year of the artist's first charted record. Both charts indicate that the RS100 largely became famous between the 1960s and 1980s, the height of rock music.
+
+```{r}
+
+# RELEASE YEAR HISTOGRAM--------------------------------------------------------
+
+# Put data in tidy-long format
+years_long <- data.frame(
+  Variable = rep(c("Artist's Top Song Release Year", "Year Artist First Charted"), each = nrow(all_artist_data)),
+  Value = c(all_artist_data$Release_Year, all_artist_data$Year_First_Charted) )
+
+# Plot side-by-side histograms
+ggplot(years_long, aes(x = as.numeric(Value), fill = Variable)) +
+  geom_histogram(position = "identity", alpha = 1, binwidth = 6, color = "black") +
+  scale_fill_manual(values = c("cornsilk", "coral")) +
+  labs(title = "Rolling Stone Top 100 Artists: 'First Year of Fame'", x = "Release Year", y = "Frequency") +
+  scale_x_continuous(breaks = seq(min(1950), max(2020), by = 15)) +
+  theme_minimal() +
+  facet_wrap(~Variable, scales = "free")
 
 ```
 
+This histogram shows the distribution of Spotify artist popularity scores. The scores are between 0 and 100 and "based, in the most part, on the total number of plays the track has had and how recent those plays are" (Spotify for Developers Documentation). The chart indicates that the scores are not uniquely high, with the majority being between 53 and 83.
+
 ```{r}
-# Data Visualization
+
+# SPOTIFY POPULARITY HISTOGRAM--------------------------------------------------
+ggplot(spotify_info, aes(x = Popularity)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(min(spotify_info$Popularity), max(100), by = 10)) +
+  labs(title = "Spotify Artist Popularity Score Histogram", x = "Popularity", y = "Frequency")
 
 ```
+The scatterplot below indicates that the Rolling Stone ranking does correlate with Spotify popularity.
+
+```{r}
+
+# ARTIST RANK ON ROLLING STONE V ARTIST POPULARITY------------------------------
+ggplot(popularity_table, aes(x = RS_Rank, y = Popularity)) +
+  geom_point() + theme_minimal() + 
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
+  geom_smooth(method = "lm", se = FALSE, color = "red3", size = 0.5, linetype = "longdash", alpha = 0.5) +
+  scale_x_continuous(breaks = seq(min(0), max(100), by = 10)) +
+  labs(title = "Rolling Stone Ranking v. Spotify Popularity",
+       x = "Rolling Stone Ranking",
+       y = "Spotify Popularity")
+
+```
+
+The table below shows the top 10 artists for Spotify popularity. These artists all appear to have popular top songs, rock genres, millions in certified sales (units), and all from the US, UK, or Australia. What explains why these artists are popular compared to others from the RS100?
+
+```{r}
+
+# Most Popular Artists Table
+print(top_10_most_popular)
+
+```
+The scatterplot below shows that Artist Popularity is correlated with Top-Song popularity. The Spotify API indicates Artist Popularity is partially dependent on song popularity. This may also indicate that artists who have even one very popular song ("one hit wonders") may have significantly higher popularity scores. The Rolling Stone article sought to describe the most influential artists, which may not be those with popular songs, but rather artists who explored and revolutionized music in a way that inspired other musicians. This may explain the lack of correlation between the Rolling Stone ranking and Spotify Popularity metrics. It also helps explain why some of the RS100 scored poorly on Spotify Popularity.
+
+```{r}
+
+# TOP TRACK POPULARITY V ARTIST POPULARITY (Spotify)----------------------------
+ggplot(spotify_info, aes(x = TopTrack_Popularity, y = Popularity)) +
+  geom_point() + theme_minimal() + 
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
+  geom_smooth(method = "lm", se = FALSE, color = "red3", size = 0.5, linetype = "longdash", alpha = 0.5) +
+  scale_x_continuous(breaks = seq(min(45), max(95), by = 5)) +
+  labs(title = "Top Song Popularity v. Artist Popularity on Spotify",
+       x = "Top Song Popularity",
+       y = "Artist Popularity")
+
+```
+It appears there is a slight correlation between the song's release year and the artist's popularity. This indicates that older artists may have lower popularity scores because their songs were released earlier.
+
+```{r}
+
+# DURATION OF TOP SONG V SONG POPULARITY----------------------------------------
+ggplot(spotify_info, aes(x = as.numeric(Release_Year), y = Popularity)) +
+  geom_point() + theme_minimal() + 
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
+  geom_smooth(method = "lm", se = FALSE, color = "red3", size = 0.5, linetype = "longdash", alpha = 0.5) +
+  scale_x_continuous(breaks = seq(min(1950), max(2023), by = 5)) +
+  labs(title = "Top Song Release Year v. Artist Popularity on Spotify",
+       x = "Top Song Release Year",
+       y = "Artist Popularity")
+
+```
+The graph below indicates there is a relationship between artist popularity and certified sales. Artists who have more popularity may make more money from streams, meaning they advertise their music and continue to gain money and popularity. The interesting factor is that these numbers are largely from a pre-streaming world as the artists tend to be from older years. This may indicate that artists who sold more records in the height of their fame are more likely to see success on streaming apps than those who sold less.
+```{r}
+
+# POPULARITY VS TOP SELLERS-----------------------------------------------------
+ggplot(all_artist_data, aes(x = as.numeric(Certified_Units), y = Popularity)) +
+  geom_point() + theme_minimal() + 
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1), plot.title = element_text(hjust = 0.5)) +
+  geom_smooth(method = "lm", se = FALSE, color = "red3", size = 0.5, linetype = "longdash", alpha = 0.5) +
+  scale_y_continuous(breaks = seq(min(50), max(100), by = 5)) +
+  scale_x_continuous(labels = scales::label_number(scale = 1e-6, suffix = " million")) +
+  labs(title = "Certified Sales (millions) vs. Artist Popularity",
+       x = "Certified Sales (millions)",
+       y = "Artist Popularity")
+
+```
+
+Data shows that some of the RS100 have music that endures, but many have low popularity scores on spotify. Artists with more popular Top-Songs, Top-Songs with later release dates, and more certified sales tend to have higher popularity scores. While the Rolling Stone sought to find those with the most influence on (rock) music, this analysis indicates that those who had the most influence may not endure as other factors better determine popularity.
 
 ## Appendix
-*As in the previous assignments, all code that you do not wish to directly include in your report should be included in a code appendix at the end of the document.*
 
 ```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE} 
 ```
