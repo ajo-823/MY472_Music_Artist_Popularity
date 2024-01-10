@@ -5,6 +5,6 @@ The results are presented in the forms of graphs and tables with textual analysi
 
 This repository contains the following files:
 
-1) `MY472_assignment_4.Rmd` is an example RMarkdown file which contains an analysis of 3 data sources to answer the research question.
-2) `MY472_assignment_4.html` is the knitted version of this file.
+1) `Music_Artist_Popularity.Rmd` is an example RMarkdown file which contains an analysis of 3 data sources to answer the research question.
+2) `Music_Artist_Popularity.html` is the knitted version of this file.
 3) `database/top_artists-db.sqlite` is an SQLite database which contains cleaned data tables used for analysis.
