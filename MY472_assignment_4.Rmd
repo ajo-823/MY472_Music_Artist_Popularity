@@ -9,23 +9,23 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-## Introduction
+### Introduction
 
-Rolling Stone ranked 100 greatest musical artists of all time in 2010. The article claims them the "most influential artists of the rock & roll era", but how has their music endured? The analysis below describes characteristics that may explain popularity at the end of 2023.
+Rolling Stone ranked 100 greatest musical artists of all time in 2010. The article claims them the "most influential artists of the rock & roll era", but has their music endured? The analysis below describes characteristics that may explain popularity at the end of 2023.
 
-## Data
+### Data
 
-I used three data sources to answer this research question. 
+I used three data sources in my analysis. 
 
-1. The Rolling Stone's 100 Greatest Artists (RS100) article, which I accessed by scraping the website to get each artist's name, rank, and description. No data manipulation was needed after collection. All 3 variables were stored in a single table.
+1. The Rolling Stone's 100 Greatest Artists (RS100) article, which I accessed by scraping the website to get artist name, rank, and description. No data manipulation was needed after collection. All 3 variables were stored in a single table.
 
-2. The Spotify API, which I accessed using the "spotifyr" package. I gathered two categories of data from the API: information about the RS100 artists and top tracks. I did not need to manipulate the data further than turning numbers into numeric data types, and changing song duration from milliseconds to minutes. All data for the 83 artists (out of 100) that had spotify data available were stored in a single table with 10 columns.
+2. The Spotify API, which I accessed using the "spotifyr" package. I gathered two categories of data: information about the RS100 artists and top tracks. I did not manipulate data further than turning numbers into numeric data types and changing song duration from milliseconds to minutes. All data for the 83 artists (out of 100) that had spotify information available were stored in a single table with 10 columns.
 
-3. The wikipedia article "List of best-selling music artists'' which contains tables of information about the best-selling music artists. I used a webscraper to access the data and functions to clean the data (primary parse numbers for monetary values). This data contained 31 out of the 100 artists from the Rolling Stone article, and was stored as a table with 8 columns.
+3. The wikipedia article "List of best-selling music artists'' which contains tables of information about the best-selling music artists. I used a webscraper to access the data and functions to clean the data (primary parse numbers for monetary values). This data contained 31 out of the 100 artists from the Rolling Stone article and was stored as a table with 8 columns.
 
-I saved all three of the tables on an SQLite database. I used queries of this database for my analysis.
+I saved all three tables to a database and used SQLite queries for my analysis.
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 
 # IMPORTS ----------------------------------------------------------------------
 library(tidyverse)
@@ -361,9 +361,9 @@ top_10_most_popular <- dbGetQuery(db,
 
 ```
 
-## Analysis
+### Analysis
 
-**Note Spotify data includes 83 out of the RS100. Wikipedia best-sellers include 31 out of the RS100.
+*Note Spotify data includes 83 out of the RS100. Wikipedia best-sellers include 31 out of the RS100.*
 
 The table shows the most relatively frequent genres in the spotify API data and best-sellers wikipedia data. Both lists indicate that the most common genres are rock related.
 
@@ -377,13 +377,15 @@ wiki_genre_list <- get_top_genres(all_artist_data$Wiki_Genre)
 
 # Top five genres and frequencies
 top_genres <- data.frame(Spotify_Genre = names(spotify_genre_list[1:5]), 
-                         Spotify_Relative_Freq = as.numeric(spotify_genre_list[1:5]),
+                         S_Relative_Freq = as.numeric(spotify_genre_list[1:5]),
                          Wiki_Genre = names(wiki_genre_list[1:5]), 
-                         Wiki_Relative_Freq = as.numeric(wiki_genre_list[1:5]))
-print(top_genres)
+                         W_Relative_Freq = as.numeric(wiki_genre_list[1:5]))
+top_genres
 
 ```
-The histograms below show the distribution of release years of each artist's top track compared with the release year of the artist's first charted record. Both charts indicate that the RS100 largely became famous between the 1960s and 1980s, the height of rock music.
+
+The histograms below show the distribution of release year of the top track compared with the release year of the artist's first charted record. Both charts indicate that the RS100 largely became famous between the 1960s-1980s, the height of rock music.
+
 
 ```{r}
 
@@ -405,7 +407,7 @@ ggplot(years_long, aes(x = as.numeric(Value), fill = Variable)) +
 
 ```
 
-This histogram shows the distribution of Spotify artist popularity scores. The scores are between 0 and 100 and "based, in the most part, on the total number of plays the track has had and how recent those plays are" (Spotify for Developers Documentation). The chart indicates that the scores are not uniquely high, with the majority being between 53 and 83.
+This histogram shows the distribution of Spotify artist popularity scores. The scores are between 0 (lowest) and 100 (highest). The chart indicates that the scores are not uniquely high, with the majority being between 53 and 83.
 
 ```{r}
 
@@ -416,9 +418,10 @@ ggplot(spotify_info, aes(x = Popularity)) +
   labs(title = "Spotify Artist Popularity Score Histogram", x = "Popularity", y = "Frequency")
 
 ```
-The scatterplot below indicates that the Rolling Stone ranking does correlate with Spotify popularity.
 
-```{r}
+The scatterplot below indicates that Rolling Stone ranking does not correlate with Spotify popularity.
+
+```{r, message=FALSE, warning=FALSE}
 
 # ARTIST RANK ON ROLLING STONE V ARTIST POPULARITY------------------------------
 ggplot(popularity_table, aes(x = RS_Rank, y = Popularity)) +
@@ -432,7 +435,7 @@ ggplot(popularity_table, aes(x = RS_Rank, y = Popularity)) +
 
 ```
 
-The table below shows the top 10 artists for Spotify popularity. These artists all appear to have popular top songs, rock genres, millions in certified sales (units), and all from the US, UK, or Australia. What explains why these artists are popular compared to others from the RS100?
+The table below shows the top 10 artists for Spotify popularity. These artists all have popular top songs, rock genres, millions in certified sales (units), and all from the US, UK, or Australia. What explains why these artists are popular compared to others from the RS100?
 
 ```{r}
 
@@ -440,9 +443,10 @@ The table below shows the top 10 artists for Spotify popularity. These artists a
 print(top_10_most_popular)
 
 ```
-The scatterplot below shows that Artist Popularity is correlated with Top-Song popularity. The Spotify API indicates Artist Popularity is partially dependent on song popularity. This may also indicate that artists who have even one very popular song ("one hit wonders") may have significantly higher popularity scores. The Rolling Stone article sought to describe the most influential artists, which may not be those with popular songs, but rather artists who explored and revolutionized music in a way that inspired other musicians. This may explain the lack of correlation between the Rolling Stone ranking and Spotify Popularity metrics. It also helps explain why some of the RS100 scored poorly on Spotify Popularity.
 
-```{r}
+The scatterplot below shows Artist Popularity is correlated with Top-Song popularity. The API indicates Artist Popularity is partially dependent on song popularity. This could indicate that artists who have even one popular song ("one hit wonders") may have higher popularity scores. The Rolling Stone article sought to describe the most influential artists, which may not be those with popular songs, but rather artists who explored and revolutionized music in a way that inspired other musicians. This may explain the lack of correlation between the Rolling Stone ranking and Spotify Popularity metrics. It also explains why some of the RS100 scored poorly on Spotify Popularity.
+
+```{r, message=FALSE, warning=FALSE}
 
 # TOP TRACK POPULARITY V ARTIST POPULARITY (Spotify)----------------------------
 ggplot(spotify_info, aes(x = TopTrack_Popularity, y = Popularity)) +
@@ -455,9 +459,10 @@ ggplot(spotify_info, aes(x = TopTrack_Popularity, y = Popularity)) +
        y = "Artist Popularity")
 
 ```
+
 It appears there is a slight correlation between the song's release year and the artist's popularity. This indicates that older artists may have lower popularity scores because their songs were released earlier.
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 
 # DURATION OF TOP SONG V SONG POPULARITY----------------------------------------
 ggplot(spotify_info, aes(x = as.numeric(Release_Year), y = Popularity)) +
@@ -470,8 +475,10 @@ ggplot(spotify_info, aes(x = as.numeric(Release_Year), y = Popularity)) +
        y = "Artist Popularity")
 
 ```
-The graph below indicates there is a relationship between artist popularity and certified sales. Artists who have more popularity may make more money from streams, meaning they advertise their music and continue to gain money and popularity. The interesting factor is that these numbers are largely from a pre-streaming world as the artists tend to be from older years. This may indicate that artists who sold more records in the height of their fame are more likely to see success on streaming apps than those who sold less.
-```{r}
+
+The graph below indicates there is a relationship between artist popularity and certified sales. Artists who have more popularity may make more money from streams, advertising their music and continuing to gain money and popularity. The interesting factor is that these numbers are largely from a pre-streaming world as the artists tend to be from older years. This may indicate that artists who sold more records in the height of their fame are more likely to see success on streaming apps than those who sold less.
+
+```{r, message=FALSE, warning=FALSE}
 
 # POPULARITY VS TOP SELLERS-----------------------------------------------------
 ggplot(all_artist_data, aes(x = as.numeric(Certified_Units), y = Popularity)) +
@@ -486,9 +493,10 @@ ggplot(all_artist_data, aes(x = as.numeric(Certified_Units), y = Popularity)) +
 
 ```
 
-Data shows that some of the RS100 have music that endures, but many have low popularity scores on spotify. Artists with more popular Top-Songs, Top-Songs with later release dates, and more certified sales tend to have higher popularity scores. While the Rolling Stone sought to find those with the most influence on (rock) music, this analysis indicates that those who had the most influence may not endure as other factors better determine popularity.
+Data shows that some of the RS100 have music that endures, but many have low popularity scores on spotify. Artists with more popular Top-Songs, Top-Songs with later release dates, and more certified sales tend to have higher popularity scores. While the Rolling Stone sought to find those with the most influence on (rock) music, this analysis indicates that those who had the most influence may not endure as other factors better determine streaming popularity. Regardless, we can still appreciate the influence all these musicians had and continue to have in the music world.
 
-## Appendix
+
+### Appendix
 
 ```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE} 
 ```
